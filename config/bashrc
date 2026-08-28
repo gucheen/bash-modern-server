@@ -1,0 +1,18 @@
+# bash-modern-server loader
+
+case $- in
+    *i*) ;;
+    *) return ;;
+esac
+
+[[ ${BASH_MODERN_LOADED:-0} -eq 1 ]] && return
+BASH_MODERN_LOADED=1
+
+export BASH_MODERN_HOME="${BASH_MODERN_HOME:-${HOME}/.config/bash-modern}"
+export PATH="${BASH_MODERN_HOME}/bin:${BASH_MODERN_HOME}/vendor/fzf/bin:${PATH}"
+export MANPATH="${BASH_MODERN_HOME}/share/man${MANPATH:+:${MANPATH}}"
+
+for module in "${BASH_MODERN_HOME}"/bashrc.d/*.sh; do
+    [[ -r "${module}" ]] && source "${module}"
+done
+unset module

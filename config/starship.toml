@@ -1,0 +1,40 @@
+format = "$username$hostname$directory$git_branch$git_status$cmd_duration$status$character"
+add_newline = false
+scan_timeout = 10
+command_timeout = 200
+
+[username]
+show_always = true
+format = "[$user]($style)@"
+style_user = "dimmed white"
+style_root = "bold red"
+
+[hostname]
+ssh_only = false
+format = "[$hostname](dimmed blue) "
+trim_at = "."
+
+[directory]
+format = "[$path]($style) "
+style = "bold cyan"
+truncation_length = 3
+truncate_to_repo = true
+
+[git_branch]
+format = "[$branch](purple) "
+
+[git_status]
+format = "([$all_status$ahead_behind]($style) )"
+style = "yellow"
+
+[cmd_duration]
+min_time = 3000
+format = "[$duration](dimmed yellow) "
+
+[status]
+disabled = false
+format = "[$status](bold red) "
+
+[character]
+success_symbol = '[\$](green) '
+error_symbol = '[\$](red) '
