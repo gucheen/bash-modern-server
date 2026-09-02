@@ -19,6 +19,8 @@ printf '# original\nalias mine=true\n' >"${BASH_MODERN_BASHRC}"
 grep -Fq '# original' "${BASH_MODERN_BASHRC}"
 [[ "$(grep -Fc '# >>> bash-modern-server >>>' "${BASH_MODERN_BASHRC}")" -eq 1 ]]
 [[ -x "${BASH_MODERN_HOME}/bin/bash-modern" ]]
+grep -Fq -- '--install-deps' <("${ROOT_DIR}/install.sh" --help)
+grep -Fq 'install-build-deps' <("${BASH_MODERN_HOME}/bin/bash-modern" --help)
 ! grep -Fq 'export BASH_MODERN_LOADED' "${BASH_MODERN_HOME}/bashrc"
 grep -Fq 'format = "$username$hostname$directory$cmd_duration$status$character"' "${BASH_MODERN_HOME}/starship.toml"
 grep -Fq 'format = "$username$hostname$directory$git_branch$git_status$cmd_duration$status$character"' "${BASH_MODERN_HOME}/starship-git.toml"

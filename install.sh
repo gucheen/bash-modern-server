@@ -10,6 +10,7 @@ source "${ROOT_DIR}/lib/common.sh"
 
 DOWNLOADS=1
 OPTIONAL_TOOLS=0
+INSTALL_DEPS=0
 UPDATE=0
 STARSHIP_MODE=keep
 GIT_STATUS_MODE=keep
@@ -21,6 +22,7 @@ Usage: ./install.sh [options]
 Options:
   --skip-downloads   Install configuration only; use tools already in PATH.
   --optional-tools   Install eza/bat/fd/rg with apt (sudo may be requested).
+  --install-deps     Install autosuggestions build dependencies with apt.
   --starship         Use and install Starship instead of the native prompt.
   --no-starship      Use the native Bash prompt and remove managed Starship.
   --git-status       Show Git branch and working-tree status in the prompt.
@@ -37,6 +39,7 @@ while (($#)); do
     case "$1" in
         --skip-downloads) DOWNLOADS=0 ;;
         --optional-tools) OPTIONAL_TOOLS=1 ;;
+        --install-deps) INSTALL_DEPS=1 ;;
         --starship) STARSHIP_MODE=enable ;;
         --no-starship) STARSHIP_MODE=disable ;;
         --git-status) GIT_STATUS_MODE=enable ;;
@@ -50,6 +53,10 @@ done
 
 validate_paths
 command -v bash >/dev/null 2>&1 || die "bash is required"
+if [[ ${INSTALL_DEPS} -eq 1 ]]; then
+    BASH_MODERN_HOME="${CONFIG_DIR}" BASH_MODERN_BACKUP_ROOT="${BACKUP_ROOT}" \
+        BASH_MODERN_BASHRC="${BASHRC_FILE}" "${ROOT_DIR}/bin/bash-modern" install-build-deps
+fi
 backup="$(create_backup)"
 info "Backup saved to ${backup}"
 
@@ -115,7 +122,7 @@ install_fzf() {
 }
 
 install_bash_autosuggestions() {
-    local target="${stage}/vendor/bash-autosuggestions" built_for
+    local target="${stage}/vendor/bash-autosuggestions" built_for bash_include
     built_for=
     [[ -r "${target}/.bash-version" ]] && built_for=$(<"${target}/.bash-version")
     [[ ${UPDATE} -eq 1 ]] && rm -rf "${target}"
@@ -124,12 +131,20 @@ install_bash_autosuggestions() {
         return 0
     fi
     rm -rf "${target}"
-    command -v git >/dev/null 2>&1 || return 1
-    command -v make >/dev/null 2>&1 || return 1
-    command -v cc >/dev/null 2>&1 || return 1
+    if ! command -v git >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1 ||
+       ! command -v cc >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then
+        warn "bash-autosuggestions build tools are missing; rerun with --install-deps"
+        return 1
+    fi
+    bash_include=$(pkg-config --variable=includedir bash 2>/dev/null || true)
+    if [[ ! -r "${bash_include}/bash/builtins.h" ]] ||
+       ! pkg-config --exists readline 2>/dev/null; then
+        warn "bash-autosuggestions headers are missing; rerun with --install-deps"
+        return 1
+    fi
     info "Installing bash-autosuggestions"
     if ! git clone --depth 1 https://github.com/wallentx/bash-autosuggestions.git "${target}" ||
-       ! make -C "${target}" all; then
+       ! make -C "${target}" all BASH_INCLUDE="${bash_include}"; then
         rm -rf "${target}"
         return 1
     fi

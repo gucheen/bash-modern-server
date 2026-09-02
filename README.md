@@ -89,11 +89,13 @@ exec bash
 
 默认安装器会从各项目的上游 GitHub 仓库下载最新版，并全部放在 `~/.config/bash-modern` 内。系统已安装的同名工具也能被自动识别。Starship 只有在传入 `--starship` 或此前已经启用时才会下载。
 
-bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。Debian/Ubuntu 若尚未安装构建依赖，先执行：
+bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次安装可让安装器通过 apt 准备构建依赖：
 
 ```bash
-sudo apt install build-essential bash-builtins libreadline-dev pkg-config
+./install.sh --install-deps
 ```
+
+非 root 用户会收到一次 sudo 授权请求。等价的手动命令为 `sudo apt install build-essential bash-builtins libreadline-dev pkg-config`。若直接运行默认安装且依赖缺失，安装器会跳过 autosuggestions、返回状态码 2，并提示重新使用 `--install-deps`，不会再进入注定失败的 C 编译。
 
 编译产物会记录 Bash 完整版本。系统升级 Bash 后重新运行安装器，它会自动重编译，不会继续加载旧版本的 `.so`。
 

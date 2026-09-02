@@ -125,7 +125,15 @@ rollback() {
 }
 
 install_optional() {
-    [[ "$(uname -s)" == Linux ]] || die "optional package installation supports Debian/Ubuntu only"
+    apt_install eza bat fd-find ripgrep
+}
+
+install_build_deps() {
+    apt_install build-essential bash-builtins libreadline-dev pkg-config
+}
+
+apt_install() {
+    [[ "$(uname -s)" == Linux ]] || die "package installation supports Debian/Ubuntu only"
     command -v apt-get >/dev/null 2>&1 || die "apt-get not found"
     local elevate=()
     if [[ ${EUID} -ne 0 ]]; then
@@ -133,8 +141,8 @@ install_optional() {
         elevate=(sudo)
     fi
     "${elevate[@]}" apt-get update
-    local candidates=(eza bat fd-find ripgrep) packages=() package
-    for package in "${candidates[@]}"; do
+    local packages=() package
+    for package in "$@"; do
         if apt-cache show "${package}" >/dev/null 2>&1; then
             packages+=("${package}")
         else
@@ -154,6 +162,7 @@ Commands:
   backups                 List available backups.
   rollback [name|path]    Restore a backup (latest when omitted).
   install-optional        Install eza, bat, fd and ripgrep via apt.
+  install-build-deps      Install autosuggestions build dependencies via apt.
 EOF
 }
 
@@ -163,6 +172,7 @@ case "${1:-}" in
     backups) list_backups ;;
     rollback) rollback "${2:-}" ;;
     install-optional) install_optional ;;
+    install-build-deps) install_build_deps ;;
     -h|--help|help|'') usage ;;
     *) die "unknown command: $1" ;;
 esac
