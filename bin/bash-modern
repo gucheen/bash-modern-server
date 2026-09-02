@@ -41,7 +41,7 @@ backup_state() {
 }
 
 doctor() {
-    local failed=0
+    local failed=0 autosuggestions_version starship_path
     printf '%-16s %s\n' "item" "status"
     printf '%-16s %s\n' "----" "------"
     if [[ -r "${CONFIG_DIR}/bashrc" ]]; then
@@ -56,8 +56,34 @@ doctor() {
         printf '%-16s %s\n' ".bashrc loader" "missing"
         failed=1
     fi
-    local tool
     PATH="${CONFIG_DIR}/bin:${CONFIG_DIR}/vendor/fzf/bin:${PATH}"
+    starship_path=$(type -P starship 2>/dev/null || true)
+    if [[ -f "${CONFIG_DIR}/user/starship.enabled" && -x ${starship_path} ]]; then
+        printf '%-16s %s\n' "prompt" "Starship (${starship_path})"
+    elif [[ -f "${CONFIG_DIR}/user/starship.enabled" ]]; then
+        printf '%-16s %s\n' "prompt" "native Bash (Starship missing)"
+    else
+        printf '%-16s %s\n' "prompt" "native Bash"
+    fi
+    if [[ -f "${CONFIG_DIR}/user/git-status.enabled" ]]; then
+        printf '%-16s %s\n' "Git status" "enabled"
+    else
+        printf '%-16s %s\n' "Git status" "disabled"
+    fi
+    autosuggestions_version=
+    if [[ -r "${CONFIG_DIR}/vendor/bash-autosuggestions/.bash-version" ]]; then
+        autosuggestions_version=$(<"${CONFIG_DIR}/vendor/bash-autosuggestions/.bash-version")
+    fi
+    if [[ ${autosuggestions_version} == "${BASH_VERSION}" &&
+          -r "${CONFIG_DIR}/vendor/bash-autosuggestions/bash-autosuggestions.bash" &&
+          -f "${CONFIG_DIR}/vendor/bash-autosuggestions/bash-autosuggestions.so" ]]; then
+        printf '%-16s %s\n' "autosuggestions" "ok"
+    elif [[ -n ${autosuggestions_version} ]]; then
+        printf '%-16s %s\n' "autosuggestions" "rebuild required (${autosuggestions_version})"
+    else
+        printf '%-16s %s\n' "autosuggestions" "missing"
+    fi
+    local tool
     for tool in bash fzf zoxide starship eza bat batcat fd fdfind rg; do
         if command -v "${tool}" >/dev/null 2>&1; then
             printf '%-16s %s\n' "${tool}" "$(command -v "${tool}")"

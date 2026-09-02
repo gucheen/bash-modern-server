@@ -1,6 +1,8 @@
 # Bash Modern Server
 
-面向多台 Debian/Ubuntu 服务器的可复用 Bash 交互环境。它保留原生 Bash/Readline，在用户目录中集成 fzf、zoxide 和 Starship，并可选安装 eza、bat、fd、ripgrep。
+面向多台 Debian/Ubuntu 服务器的可复用 Bash 交互环境。它保留原生 Bash/Readline，在用户目录中集成 fzf、bash-autosuggestions 和 zoxide，并可选安装 Starship、eza、bat、fd、ripgrep。
+
+默认支持 Ubuntu 24.04+ 与 Debian 13+，以发行版自带的 Bash 5.2+ 为兼容基线。
 
 ## 设计原则
 
@@ -16,8 +18,10 @@
 | 组件 | 用途 | 默认安装方式 |
 |---|---|---|
 | fzf | `Ctrl+R` 模糊历史搜索及补全 | 用户目录 |
+| bash-autosuggestions | 根据历史显示 fish 风格的灰色行内建议 | 用户目录编译 |
 | zoxide | 使用 `z` 智能跳转目录 | 用户目录 |
-| Starship | Git 状态等提示符信息 | 用户目录 |
+| 原生 Bash 提示符 | 用户、主机、目录与失败状态 | 内置，默认启用 |
+| Starship | 命令耗时及可定制提示符 | 用户目录，可选 |
 | eza / bat / fd / rg | 可选的现代命令行工具 | Debian/Ubuntu 软件包 |
 
 标准命令保持原义。新增快捷命令为：
@@ -28,11 +32,38 @@
 - `fdf`：调用 `fd` 或 Debian 的 `fdfind`。
 - `z 关键词`：由 zoxide 提供的目录跳转。
 
-默认提示符针对服务器管理做了精简，只显示用户、主机、目录、Git 分支与状态、慢命令耗时和失败状态。它不使用 Nerd Font 图标，也不会随项目目录自动加入语言版本等模块；root 用户会以红色显示。
+输入命令时，autosuggestions 会以灰色文字显示最近的历史匹配。按 `→`、`Ctrl+F`、`End` 或 `Ctrl+E` 接受完整建议，按 `Alt+F` 只接受下一个词。
+
+`abbr` 提供类似 fish 的即时缩写；它与 alias 不同，会在按空格或回车时把缩写展开成可继续编辑的完整命令：
+
+```bash
+abbr gs git status
+abbr --add kctx kubectl config current-context
+abbr --show
+abbr --erase gs
+```
+
+缩写保存在 `~/.config/bash-modern/user/abbreviations.bash`，项目更新时会保留。
+
+默认提示符由 Bash 原生实现，只显示用户、主机、目录和失败状态，不启动额外提示符进程，也不扫描 Git 工作区；root 用户会以红色显示。提示符关闭 `promptvars`，避免目录或可选 Git 分支中的特殊内容触发命令替换。
+
+Git 信息默认关闭。需要在提示符中显示分支、领先/落后与工作区修改时执行：
+
+```bash
+./install.sh --git-status
+```
+
+需要 Starship 的命令耗时和定制能力时执行：
+
+```bash
+./install.sh --starship
+```
+
+两项可以组合使用。普通更新会保留选择；使用 `--no-starship` 或 `--no-git-status` 可分别关闭。Starship 配置不使用 Nerd Font 图标，且关闭符号链接扫描；未启用 Git 状态时也不会加载 Git 模块。
 
 zoxide 由编号最高的模块最后初始化，确保 Starship 等工具不会覆盖其目录变化钩子。
 
-命令行编辑完全交给 Bash 自带的 Readline，不再加载 ble.sh。内存历史保留 20,000 条、历史文件保留 50,000 条，并在多个 Bash 会话间同步。`Alt+Backspace` 删除前一个词；若终端不发送 Alt/Meta，可依次按 `Ctrl+X`、`Backspace`。对于 `/opt/docker/abc`，结果是 `/opt/docker/`。
+命令行编辑仍由 Bash 自带的 Readline 负责，不加载 ble.sh；bash-autosuggestions 只通过 Readline 的 loadable builtin 增加行内建议。内存历史保留 20,000 条、历史文件保留 50,000 条，并在多个 Bash 会话间同步。`Alt+Backspace` 删除前一个词；若终端不发送 Alt/Meta，可依次按 `Ctrl+X`、`Backspace`。对于 `/opt/docker/abc`，结果是 `/opt/docker/`。
 
 ## 快速使用
 
@@ -56,7 +87,15 @@ exec bash
 ~/.config/bash-modern/bin/bash-modern doctor
 ```
 
-默认安装器会从各项目的官方 GitHub 仓库下载最新版，并全部放在 `~/.config/bash-modern` 内。系统已安装的同名工具也能被自动识别。
+默认安装器会从各项目的上游 GitHub 仓库下载最新版，并全部放在 `~/.config/bash-modern` 内。系统已安装的同名工具也能被自动识别。Starship 只有在传入 `--starship` 或此前已经启用时才会下载。
+
+bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。Debian/Ubuntu 若尚未安装构建依赖，先执行：
+
+```bash
+sudo apt install build-essential bash-builtins libreadline-dev pkg-config
+```
+
+编译产物会记录 Bash 完整版本。系统升级 Bash 后重新运行安装器，它会自动重编译，不会继续加载旧版本的 `.so`。
 
 ### 安装可选增强工具
 
@@ -76,7 +115,7 @@ exec bash
 ./install.sh --skip-downloads
 ```
 
-更新已有安装时，此选项会保留项目此前下载的 fzf、zoxide、Starship 和 manpage。首次安装时不会下载缺失组件；系统 `PATH` 中已有的工具仍会被自动使用。
+更新已有安装时，此选项会保留项目此前下载的 fzf、zoxide、已启用的 Starship 和 manpage。首次安装时不会下载缺失组件；系统 `PATH` 中已有的工具仍会被自动使用。
 
 ### 更新组件
 
@@ -108,7 +147,9 @@ exec bash
 ├── bashrc.d/
 ├── bin/
 ├── vendor/
-└── starship.toml
+├── user/
+├── starship.toml
+└── starship-git.toml
 ```
 
 自定义配置时，建议新增编号模块，例如：
@@ -176,11 +217,11 @@ bash --norc --noprofile
 # <<< bash-modern-server <<<
 ```
 
-所有集成都先检查文件或命令是否存在，因此下载失败不会让新登录会话失效。安装日志会指出被跳过的组件，并以状态码 2 结束，方便自动化部署发现未完整安装；修复网络或依赖后重复运行即可。
+所有集成都先检查文件或命令是否存在，因此下载或编译失败不会让新登录会话失效。安装日志会指出被跳过的组件，并以状态码 2 结束，方便自动化部署发现未完整安装；修复网络或依赖后重复运行即可。
 
 ## 安全说明
 
-安装器只从三个项目的官方 GitHub 仓库下载组件。fzf 使用官方 Git 仓库；zoxide 和 Starship 使用各自官方安装脚本，并把二进制写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
+默认安装器从 fzf、bash-autosuggestions 和 zoxide 的上游 GitHub 仓库下载组件；启用 Starship 时才会访问第四个上游。fzf 和 bash-autosuggestions 使用 Git 仓库；zoxide 和 Starship 使用各自安装脚本，并把产物写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
 
 ## 验证项目
 

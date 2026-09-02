@@ -11,6 +11,8 @@ source "${ROOT_DIR}/lib/common.sh"
 DOWNLOADS=1
 OPTIONAL_TOOLS=0
 UPDATE=0
+STARSHIP_MODE=keep
+GIT_STATUS_MODE=keep
 
 usage() {
     cat <<'EOF'
@@ -19,6 +21,10 @@ Usage: ./install.sh [options]
 Options:
   --skip-downloads   Install configuration only; use tools already in PATH.
   --optional-tools   Install eza/bat/fd/rg with apt (sudo may be requested).
+  --starship         Use and install Starship instead of the native prompt.
+  --no-starship      Use the native Bash prompt and remove managed Starship.
+  --git-status       Show Git branch and working-tree status in the prompt.
+  --no-git-status    Do not query Git while drawing the prompt.
   --update           Refresh downloaded integrations.
   -h, --help         Show this help.
 
@@ -31,6 +37,10 @@ while (($#)); do
     case "$1" in
         --skip-downloads) DOWNLOADS=0 ;;
         --optional-tools) OPTIONAL_TOOLS=1 ;;
+        --starship) STARSHIP_MODE=enable ;;
+        --no-starship) STARSHIP_MODE=disable ;;
+        --git-status) GIT_STATUS_MODE=enable ;;
+        --no-git-status) GIT_STATUS_MODE=disable ;;
         --update) UPDATE=1 ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown option: $1" ;;
@@ -45,9 +55,10 @@ info "Backup saved to ${backup}"
 
 stage="${CONFIG_DIR}.stage.$$"
 rm -rf "${stage}"
-mkdir -p "${stage}/bashrc.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man"
+mkdir -p "${stage}/bashrc.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man" "${stage}/user"
 cp "${ROOT_DIR}/config/bashrc" "${stage}/bashrc"
 cp "${ROOT_DIR}/config/starship.toml" "${stage}/starship.toml"
+cp "${ROOT_DIR}/config/starship-git.toml" "${stage}/starship-git.toml"
 cp "${ROOT_DIR}"/bashrc.d/*.sh "${stage}/bashrc.d/"
 cp "${ROOT_DIR}"/bin/* "${stage}/bin/"
 chmod +x "${stage}/bin/"*
@@ -56,12 +67,27 @@ if [[ -d "${CONFIG_DIR}/vendor" ]]; then
     cp -a "${CONFIG_DIR}/vendor/." "${stage}/vendor/"
 fi
 rm -rf "${stage}/vendor/blesh"
-for preserved_binary in starship zoxide; do
+if [[ -d "${CONFIG_DIR}/user" ]]; then
+    cp -a "${CONFIG_DIR}/user/." "${stage}/user/"
+fi
+case ${STARSHIP_MODE} in
+    enable) touch "${stage}/user/starship.enabled" ;;
+    disable) rm -f "${stage}/user/starship.enabled" ;;
+esac
+case ${GIT_STATUS_MODE} in
+    enable) touch "${stage}/user/git-status.enabled" ;;
+    disable) rm -f "${stage}/user/git-status.enabled" ;;
+esac
+
+for preserved_binary in zoxide; do
     if [[ -x "${CONFIG_DIR}/bin/${preserved_binary}" ]]; then
         cp -p "${CONFIG_DIR}/bin/${preserved_binary}" "${stage}/bin/${preserved_binary}"
     fi
 done
 unset preserved_binary
+if [[ -f "${stage}/user/starship.enabled" && -x "${CONFIG_DIR}/bin/starship" ]]; then
+    cp -p "${CONFIG_DIR}/bin/starship" "${stage}/bin/starship"
+fi
 if [[ -d "${CONFIG_DIR}/share/man" ]]; then
     cp -a "${CONFIG_DIR}/share/man/." "${stage}/share/man/"
 fi
@@ -88,6 +114,28 @@ install_fzf() {
     "${target}/install" --bin || return 1
 }
 
+install_bash_autosuggestions() {
+    local target="${stage}/vendor/bash-autosuggestions" built_for
+    built_for=
+    [[ -r "${target}/.bash-version" ]] && built_for=$(<"${target}/.bash-version")
+    [[ ${UPDATE} -eq 1 ]] && rm -rf "${target}"
+    if [[ ${built_for} == "${BASH_VERSION}" && -r "${target}/bash-autosuggestions.bash" &&
+          -f "${target}/bash-autosuggestions.so" ]]; then
+        return 0
+    fi
+    rm -rf "${target}"
+    command -v git >/dev/null 2>&1 || return 1
+    command -v make >/dev/null 2>&1 || return 1
+    command -v cc >/dev/null 2>&1 || return 1
+    info "Installing bash-autosuggestions"
+    if ! git clone --depth 1 https://github.com/wallentx/bash-autosuggestions.git "${target}" ||
+       ! make -C "${target}" all; then
+        rm -rf "${target}"
+        return 1
+    fi
+    printf '%s\n' "${BASH_VERSION}" >"${target}/.bash-version"
+}
+
 install_zoxide() {
     [[ ${UPDATE} -eq 0 && -x "${stage}/bin/zoxide" ]] && return 0
     info "Installing zoxide"
@@ -108,12 +156,15 @@ install_starship() {
 
 if [[ ${DOWNLOADS} -eq 1 ]]; then
     download_failures=0
-    for component in fzf zoxide starship; do
+    components=(fzf bash_autosuggestions zoxide)
+    [[ -f "${stage}/user/starship.enabled" ]] && components+=(starship)
+    for component in "${components[@]}"; do
         if ! "install_${component}"; then
-            warn "Could not install ${component}; configuration will use it automatically when available"
+            warn "Could not install ${component//_/-}; configuration will use it automatically when available"
             download_failures=$((download_failures + 1))
         fi
     done
+    unset components component
 fi
 
 rm -rf "${CONFIG_DIR}"
