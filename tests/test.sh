@@ -31,6 +31,9 @@ grep -Fq "success_symbol = '[\\\$](green) '" "${BASH_MODERN_HOME}/starship.toml"
 grep -Fq 'backward-kill-word' "${BASH_MODERN_HOME}/bashrc.d/10-shell-options.sh"
 [[ -f "${BASH_MODERN_HOME}/bashrc.d/99-zoxide.sh" ]]
 [[ -f "${BASH_MODERN_HOME}/bashrc.d/40-abbreviations.sh" ]]
+[[ -f "${BASH_MODERN_HOME}/bashrc.d/45-command-library.sh" ]]
+[[ -f "${BASH_MODERN_HOME}/commands.d/20-common.sh" ]]
+[[ -f "${BASH_MODERN_HOME}/commands.d/30-abbreviations.sh" ]]
 [[ -f "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh" ]]
 [[ ! -f "${BASH_MODERN_HOME}/user/starship.enabled" ]]
 [[ ! -f "${BASH_MODERN_HOME}/user/git-status.enabled" ]]
@@ -52,7 +55,76 @@ READLINE_LINE='/tmp/gs'
 READLINE_POINT=7
 _bash_modern_abbr_expand
 [[ ${READLINE_LINE} == '/tmp/gs' ]]
+abbr --add ab 'echo expanded'
+READLINE_LINE='abbr --erase ab'
+READLINE_POINT=${#READLINE_LINE}
+_bash_modern_abbr_expand
+[[ ${READLINE_LINE} == 'abbr --erase ab' ]]
+READLINE_LINE='printf done; abbr --erase ab'
+READLINE_POINT=${#READLINE_LINE}
+_bash_modern_abbr_expand
+[[ ${READLINE_LINE} == 'printf done; abbr --erase ab' ]]
+READLINE_LINE='echo ab'
+READLINE_POINT=${#READLINE_LINE}
+_bash_modern_abbr_expand
+[[ ${READLINE_LINE} == 'echo echo expanded' ]]
+abbr --erase ab
 [[ -f "${BASH_MODERN_HOME}/user/abbreviations.bash" ]]
+chmod 666 "${BASH_MODERN_HOME}/user/abbreviations.bash"
+(
+    source "${BASH_MODERN_HOME}/bashrc.d/40-abbreviations.sh" 2>/dev/null
+    [[ ${#_BASH_MODERN_ABBR_NAMES[@]} -eq 0 ]]
+)
+chmod 600 "${BASH_MODERN_HOME}/user/abbreviations.bash"
+
+source "${BASH_MODERN_HOME}/bashrc.d/45-command-library.sh"
+declare -F dc >/dev/null
+declare -F dcup >/dev/null
+declare -F dlogs >/dev/null
+[[ $(_bash_modern_abbr_find mtr100) -ge 0 ]]
+grep -Fq 'dlogs [service] [lines]' <(cmds docker)
+grep -Fq 'dc <compose-arguments...>' <(cmds docker)
+grep -Fq 'local args=(sudo docker compose)' "${BASH_MODERN_HOME}/commands.d/20-common.sh"
+grep -Fq 'dc pull && dc up -d --remove-orphans' "${BASH_MODERN_HOME}/commands.d/20-common.sh"
+(
+    compose_test_dir="${TEST_ROOT}/compose"
+    mkdir -p "${compose_test_dir}"
+    touch "${compose_test_dir}/env.defaults" "${compose_test_dir}/.env"
+    sudo() { printf '<%s>\n' "$@"; }
+    cd "${compose_test_dir}"
+    [[ $(dc ps) == $'<docker>\n<compose>\n<--env-file>\n<env.defaults>\n<--env-file>\n<.env>\n<ps>' ]]
+)
+grep -Fq 'mtr100 <host>' <(cmds mtr)
+grep -Fq "${BASH_MODERN_HOME}/commands.d/20-common.sh" <(cmds --sources)
+
+abbr --add mtr100 custom mtr
+source "${BASH_MODERN_HOME}/commands.d/30-abbreviations.sh"
+index=$(_bash_modern_abbr_find mtr100)
+[[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'custom mtr' ]]
+! grep -Fq 'dcup' "${BASH_MODERN_HOME}/user/abbreviations.bash"
+abbr --erase mtr100
+index=$(_bash_modern_abbr_find mtr100)
+[[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'mtr -rwzc 100 -4' ]]
+
+mkdir -p "${HOME}/.config/bash-modern-commands/commands.d"
+cp "${ROOT_DIR}/examples/private-commands/abbreviations.sh" "${HOME}/.config/bash-modern-commands/abbreviations.sh"
+cp "${ROOT_DIR}/examples/private-commands/commands.d/services.sh" "${HOME}/.config/bash-modern-commands/commands.d/services.sh"
+chmod -R go-w "${HOME}/.config/bash-modern-commands"
+source "${BASH_MODERN_HOME}/bashrc.d/45-command-library.sh"
+declare -F service-status >/dev/null
+grep -Fq 'service-status <name>' <(cmds services)
+grep -Fq "${HOME}/.config/bash-modern-commands/abbreviations.sh" <(cmds --sources)
+index=$(_bash_modern_abbr_find curl-private)
+[[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'curl --fail --show-error https://service.example.internal' ]]
+printf 'unsafe-command() { :; }\n' >"${HOME}/.config/bash-modern-commands/commands.d/unsafe.sh"
+chmod 666 "${HOME}/.config/bash-modern-commands/commands.d/unsafe.sh"
+(
+    source "${BASH_MODERN_HOME}/bashrc.d/45-command-library.sh" 2>/dev/null
+    ! declare -F unsafe-command >/dev/null
+)
+
+printf '# @cmd Local | only-here | Test a host-only command\nonly-here() { :; }\n' >"${BASH_MODERN_HOME}/user/local.sh"
+chmod 600 "${BASH_MODERN_HOME}/user/local.sh"
 
 (
     source "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh"
@@ -102,6 +174,7 @@ touch "${BASH_MODERN_HOME}/share/man/man1/zoxide.1"
 [[ -f "${BASH_MODERN_HOME}/share/man/man1/zoxide.1" ]]
 [[ -f "${BASH_MODERN_HOME}/user/starship.enabled" ]]
 [[ -f "${BASH_MODERN_HOME}/user/git-status.enabled" ]]
+grep -Fq 'only-here()' "${BASH_MODERN_HOME}/user/local.sh"
 grep -Fq '_BASH_MODERN_ABBR_NAMES[0]=gs' "${BASH_MODERN_HOME}/user/abbreviations.bash"
 
 "${ROOT_DIR}/install.sh" --skip-downloads >/dev/null

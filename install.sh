@@ -62,11 +62,12 @@ info "Backup saved to ${backup}"
 
 stage="${CONFIG_DIR}.stage.$$"
 rm -rf "${stage}"
-mkdir -p "${stage}/bashrc.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man" "${stage}/user"
+mkdir -p "${stage}/bashrc.d" "${stage}/commands.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man" "${stage}/user"
 cp "${ROOT_DIR}/config/bashrc" "${stage}/bashrc"
 cp "${ROOT_DIR}/config/starship.toml" "${stage}/starship.toml"
 cp "${ROOT_DIR}/config/starship-git.toml" "${stage}/starship-git.toml"
 cp "${ROOT_DIR}"/bashrc.d/*.sh "${stage}/bashrc.d/"
+cp "${ROOT_DIR}"/commands.d/*.sh "${stage}/commands.d/"
 cp "${ROOT_DIR}"/bin/* "${stage}/bin/"
 chmod +x "${stage}/bin/"*
 
@@ -77,6 +78,7 @@ rm -rf "${stage}/vendor/blesh"
 if [[ -d "${CONFIG_DIR}/user" ]]; then
     cp -a "${CONFIG_DIR}/user/." "${stage}/user/"
 fi
+chmod go-w "${stage}/user"
 case ${STARSHIP_MODE} in
     enable) touch "${stage}/user/starship.enabled" ;;
     disable) rm -f "${stage}/user/starship.enabled" ;;
