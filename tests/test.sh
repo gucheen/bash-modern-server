@@ -101,6 +101,10 @@ abbr --add mtr100 custom mtr
 source "${BASH_MODERN_HOME}/commands.d/30-abbreviations.sh"
 index=$(_bash_modern_abbr_find mtr100)
 [[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'custom mtr' ]]
+index=$(_bash_modern_abbr_find ll)
+[[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'eza -l --group --group-directories-first' ]]
+index=$(_bash_modern_abbr_find l)
+[[ ${_BASH_MODERN_ABBR_VALUES[index]} == 'eza --group-directories-first' ]]
 ! grep -Fq 'dcup' "${BASH_MODERN_HOME}/user/abbreviations.bash"
 abbr --erase mtr100
 index=$(_bash_modern_abbr_find mtr100)

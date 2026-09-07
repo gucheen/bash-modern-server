@@ -1,9 +1,9 @@
 alias grep='grep --color=auto'
 
 if command -v eza >/dev/null 2>&1; then
-    alias ll='eza -lah --group-directories-first'
+    alias ll='eza -lah --group --group-directories-first'
     alias la='eza -a --group-directories-first'
-    alias lt='eza --tree --level=2'
+    alias lt='eza --tree --level=2 --group-directories-first'
 else
     alias ll='ls -lah'
     alias la='ls -A'
