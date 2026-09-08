@@ -166,6 +166,8 @@ chmod 600 ~/.config/bash-modern/user/local.sh
 
 默认提示符由 Bash 原生实现，只显示用户、主机、目录和失败状态，不启动额外提示符进程，也不扫描 Git 工作区；root 用户会以红色显示。提示符关闭 `promptvars`，避免目录或可选 Git 分支中的特殊内容触发命令替换。
 
+部分系统的 systemd 终端集成会向 `PS0` 添加 `$(__systemd_osc_context_ps0)`，在关闭 `promptvars` 后直接显示这段文本。原生提示符会移除该片段（包括重复添加的片段），并从 `PROMPT_COMMAND` 数组中移除对应的独立钩子，保留其他内容。如果当前会话仍有残留，可执行 `PS0=${PS0//'$(__systemd_osc_context_ps0)'/}` 临时清理；更新安装后重新登录即可应用完整兼容处理。这是提示符显示冲突，与 Readline 导致的输入卡住不同。
+
 Git 信息默认关闭。需要在提示符中显示分支、领先/落后与工作区修改时执行：
 
 ```bash

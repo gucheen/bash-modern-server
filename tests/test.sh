@@ -138,6 +138,37 @@ chmod 600 "${BASH_MODERN_HOME}/user/local.sh"
     [[ ${PS1} == *'[1]'* ]]
 )
 
+(
+    shopt -s promptvars
+    PS0='before$(__systemd_osc_context_ps0)$(__systemd_osc_context_ps0)after'
+    PROMPT_COMMAND=(__systemd_osc_context_precmdline 'printf custom' __systemd_osc_context_precmdline)
+    source "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh"
+    [[ ${PS0} == beforeafter ]]
+    ! shopt -q promptvars
+    [[ ${#PROMPT_COMMAND[@]} -eq 2 ]]
+    [[ ${PROMPT_COMMAND[0]} == _bash_modern_prompt_update ]]
+    [[ ${PROMPT_COMMAND[1]} == 'printf custom' ]]
+    source "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh"
+    [[ ${#PROMPT_COMMAND[@]} -eq 2 ]]
+)
+(
+    unset PROMPT_COMMAND PS0
+    PROMPT_COMMAND=__systemd_osc_context_precmdline
+    source "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh"
+    [[ ${PROMPT_COMMAND} == _bash_modern_prompt_update ]]
+    [[ -z ${PS0} ]]
+)
+(
+    _BASH_MODERN_STARSHIP_ACTIVE=1
+    shopt -s promptvars
+    PS0='$(__systemd_osc_context_ps0)'
+    PROMPT_COMMAND=(__systemd_osc_context_precmdline)
+    source "${BASH_MODERN_HOME}/bashrc.d/35-native-prompt.sh"
+    [[ ${PS0} == '$(__systemd_osc_context_ps0)' ]]
+    [[ ${PROMPT_COMMAND[0]} == __systemd_osc_context_precmdline ]]
+    shopt -q promptvars
+)
+
 if command -v git >/dev/null 2>&1; then
     (
         prompt_repo="${TEST_ROOT}/prompt-repo"

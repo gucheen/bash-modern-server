@@ -40,16 +40,22 @@ if [[ ${_BASH_MODERN_STARSHIP_ACTIVE:-0} -ne 1 ]]; then
         PS1+=" \\[\\e[${character_style}m\\]\\$\\[\\e[0m\\] "
     }
 
+    # systemd's PS0 substitution would print literally with promptvars disabled.
+    PS0=${PS0-}
+    PS0=${PS0//'$(__systemd_osc_context_ps0)'/}
     shopt -u promptvars
     if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) == 'declare -a'* ]]; then
         _bash_modern_prompt_commands=()
         for _bash_modern_prompt_command in "${PROMPT_COMMAND[@]}"; do
-            [[ ${_bash_modern_prompt_command} == _bash_modern_prompt_update ]] ||
-                _bash_modern_prompt_commands+=("${_bash_modern_prompt_command}")
+            case ${_bash_modern_prompt_command} in
+                _bash_modern_prompt_update|__systemd_osc_context_precmdline) ;;
+                *) _bash_modern_prompt_commands+=("${_bash_modern_prompt_command}") ;;
+            esac
         done
         PROMPT_COMMAND=(_bash_modern_prompt_update "${_bash_modern_prompt_commands[@]}")
         unset _bash_modern_prompt_commands _bash_modern_prompt_command
     else
+        [[ ${PROMPT_COMMAND-} != __systemd_osc_context_precmdline ]] || PROMPT_COMMAND=
         case ";${PROMPT_COMMAND-};" in
             *';_bash_modern_prompt_update;'*) ;;
             *) PROMPT_COMMAND="_bash_modern_prompt_update${PROMPT_COMMAND:+; ${PROMPT_COMMAND}}" ;;
