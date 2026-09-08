@@ -7,18 +7,14 @@ if _bash_modern_fzf="$(type -P fzf 2>/dev/null)" && [[ -x ${_bash_modern_fzf} ]]
     fi
 fi
 
-_bash_modern_autosuggestions_version=
-if [[ -r "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/.bash-version" ]]; then
-    _bash_modern_autosuggestions_version=$(<"${BASH_MODERN_HOME}/vendor/bash-autosuggestions/.bash-version")
+if [[ -r "${BASH_MODERN_HOME}/lib/autosuggestions.sh" ]]; then
+    source "${BASH_MODERN_HOME}/lib/autosuggestions.sh"
+    if _bash_modern_autosuggestions allow >/dev/null 2>&1; then
+        : "${BASH_AUTOSUGGEST_STRATEGY:=match_prev_cmd history}"
+        : "${BASH_AUTOSUGGEST_USE_ASYNC:=auto}"
+        source "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/bash-autosuggestions.bash"
+    fi
 fi
-if [[ ${_bash_modern_autosuggestions_version} == "${BASH_VERSION}" &&
-      -r "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/bash-autosuggestions.bash" &&
-      -f "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/bash-autosuggestions.so" ]]; then
-    : "${BASH_AUTOSUGGEST_STRATEGY:=match_prev_cmd history}"
-    : "${BASH_AUTOSUGGEST_USE_ASYNC:=auto}"
-    source "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/bash-autosuggestions.bash"
-fi
-unset _bash_modern_autosuggestions_version
 
 if [[ -f "${BASH_MODERN_HOME}/user/starship.enabled" ]] &&
    _bash_modern_starship="$(type -P starship 2>/dev/null)" && [[ -x ${_bash_modern_starship} ]]; then

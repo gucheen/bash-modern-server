@@ -164,6 +164,7 @@ if command -v git >/dev/null 2>&1; then
 fi
 
 mkdir -p "${BASH_MODERN_HOME}/vendor/blesh"
+"${BASH_MODERN_HOME}/bin/bash-modern" autosuggestions off >/dev/null
 touch "${BASH_MODERN_HOME}/vendor/blesh/ble.sh"
 printf '#!/bin/sh\nexit 0\n' >"${BASH_MODERN_HOME}/bin/starship"
 printf '#!/bin/sh\nexit 0\n' >"${BASH_MODERN_HOME}/bin/zoxide"
@@ -171,6 +172,8 @@ chmod +x "${BASH_MODERN_HOME}/bin/starship" "${BASH_MODERN_HOME}/bin/zoxide"
 mkdir -p "${BASH_MODERN_HOME}/share/man/man1"
 touch "${BASH_MODERN_HOME}/share/man/man1/zoxide.1"
 "${ROOT_DIR}/install.sh" --skip-downloads --starship --git-status >/dev/null
+[[ -f "${BASH_MODERN_HOME}/user/autosuggestions.disabled" ]]
+grep -Fq 'disabled by user' <("${BASH_MODERN_HOME}/bin/bash-modern" doctor)
 [[ "$(grep -Fc '# >>> bash-modern-server >>>' "${BASH_MODERN_BASHRC}")" -eq 1 ]]
 [[ ! -d "${BASH_MODERN_HOME}/vendor/blesh" ]]
 [[ -x "${BASH_MODERN_HOME}/bin/starship" ]]

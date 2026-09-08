@@ -62,7 +62,8 @@ info "Backup saved to ${backup}"
 
 stage="${CONFIG_DIR}.stage.$$"
 rm -rf "${stage}"
-mkdir -p "${stage}/bashrc.d" "${stage}/commands.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man" "${stage}/user"
+mkdir -p "${stage}/bashrc.d" "${stage}/commands.d" "${stage}/bin" "${stage}/vendor" "${stage}/share/man" "${stage}/user" "${stage}/lib"
+cp "${ROOT_DIR}/lib/autosuggestions.sh" "${ROOT_DIR}/lib/autosuggestions.py" "${stage}/lib/"
 cp "${ROOT_DIR}/config/bashrc" "${stage}/bashrc"
 cp "${ROOT_DIR}/config/starship.toml" "${stage}/starship.toml"
 cp "${ROOT_DIR}/config/starship-git.toml" "${stage}/starship-git.toml"
@@ -177,7 +178,7 @@ if [[ ${DOWNLOADS} -eq 1 ]]; then
     [[ -f "${stage}/user/starship.enabled" ]] && components+=(starship)
     for component in "${components[@]}"; do
         if ! "install_${component}"; then
-            warn "Could not install ${component//_/-}; configuration will use it automatically when available"
+            warn "Could not install ${component//_/-}; rerun the installer after fixing its dependencies"
             download_failures=$((download_failures + 1))
         fi
     done
@@ -202,6 +203,14 @@ mv "${tmp_bashrc}" "${BASHRC_FILE}"
 
 if [[ ${OPTIONAL_TOOLS} -eq 1 ]]; then
     "${CONFIG_DIR}/bin/bash-modern" install-optional
+fi
+
+if [[ ! -f "${CONFIG_DIR}/user/autosuggestions.disabled" &&
+      -f "${CONFIG_DIR}/vendor/bash-autosuggestions/bash-autosuggestions.so" ]]; then
+    info "Checking autosuggestions interactive input"
+    if ! BASH_MODERN_HOME="${CONFIG_DIR}" "${BASH}" "${CONFIG_DIR}/bin/bash-modern" autosuggestions check; then
+        warn "Autosuggestions remain disabled; inspect with bash-modern doctor and retry with bash-modern autosuggestions check"
+    fi
 fi
 
 info "Installation complete"

@@ -10,6 +10,8 @@ BASHRC_FILE="${BASH_MODERN_BASHRC:-${HOME}/.bashrc}"
 BEGIN_MARKER="# >>> bash-modern-server >>>"
 END_MARKER="# <<< bash-modern-server <<<"
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/autosuggestions.sh"
+
 info() { printf '==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
@@ -41,7 +43,7 @@ backup_state() {
 }
 
 doctor() {
-    local failed=0 autosuggestions_version starship_path
+    local failed=0 starship_path
     printf '%-16s %s\n' "item" "status"
     printf '%-16s %s\n' "----" "------"
     if [[ -r "${CONFIG_DIR}/bashrc" ]]; then
@@ -70,19 +72,7 @@ doctor() {
     else
         printf '%-16s %s\n' "Git status" "disabled"
     fi
-    autosuggestions_version=
-    if [[ -r "${CONFIG_DIR}/vendor/bash-autosuggestions/.bash-version" ]]; then
-        autosuggestions_version=$(<"${CONFIG_DIR}/vendor/bash-autosuggestions/.bash-version")
-    fi
-    if [[ ${autosuggestions_version} == "${BASH_VERSION}" &&
-          -r "${CONFIG_DIR}/vendor/bash-autosuggestions/bash-autosuggestions.bash" &&
-          -f "${CONFIG_DIR}/vendor/bash-autosuggestions/bash-autosuggestions.so" ]]; then
-        printf '%-16s %s\n' "autosuggestions" "ok"
-    elif [[ -n ${autosuggestions_version} ]]; then
-        printf '%-16s %s\n' "autosuggestions" "rebuild required (${autosuggestions_version})"
-    else
-        printf '%-16s %s\n' "autosuggestions" "missing"
-    fi
+    printf '%-16s %s\n' "autosuggestions" "$(_bash_modern_autosuggestions status)"
     local tool
     for tool in bash fzf zoxide starship eza bat batcat fd fdfind rg; do
         if command -v "${tool}" >/dev/null 2>&1; then
@@ -129,7 +119,15 @@ install_optional() {
 }
 
 install_build_deps() {
-    apt_install build-essential bash-builtins libreadline-dev pkg-config
+    apt_install build-essential bash-builtins libreadline-dev pkg-config python3
+}
+
+autosuggestions() {
+    [[ $# -eq 1 ]] || die "usage: bash-modern autosuggestions check|off|on"
+    case "$1" in
+        check|off|on) _bash_modern_autosuggestions "$1" ;;
+        *) die "usage: bash-modern autosuggestions check|off|on" ;;
+    esac
 }
 
 apt_install() {
@@ -158,6 +156,7 @@ Usage: bash-modern COMMAND [arguments]
 
 Commands:
   doctor                  Show installed integrations.
+  autosuggestions ACTION  Check, disable (off), or verify and enable (on) suggestions.
   backup                  Back up .bashrc and this environment.
   backups                 List available backups.
   rollback [name|path]    Restore a backup (latest when omitted).
@@ -168,6 +167,7 @@ EOF
 
 case "${1:-}" in
     doctor) doctor ;;
+    autosuggestions) shift; autosuggestions "$@" ;;
     backup) backup_state ;;
     backups) list_backups ;;
     rollback) rollback "${2:-}" ;;

@@ -32,7 +32,7 @@
 - `fdf`：调用 `fd` 或 Debian 的 `fdfind`。
 - `z 关键词`：由 zoxide 提供的目录跳转。
 
-输入命令时，autosuggestions 会以灰色文字显示最近的历史匹配。按 `→`、`Ctrl+F`、`End` 或 `Ctrl+E` 接受完整建议，按 `Alt+F` 只接受下一个词。
+通过交互兼容检测后，autosuggestions 会以灰色文字显示最近的历史匹配。按 `→`、`Ctrl+F`、`End` 或 `Ctrl+E` 接受完整建议，按 `Alt+F` 只接受下一个词。
 
 `abbr` 提供类似 fish 的即时缩写；它与 alias 不同，会在按空格或回车时把缩写展开成可继续编辑的完整命令：
 
@@ -214,9 +214,30 @@ bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次�
 ./install.sh --install-deps
 ```
 
-非 root 用户会收到一次 sudo 授权请求。等价的手动命令为 `sudo apt install build-essential bash-builtins libreadline-dev pkg-config`。若直接运行默认安装且依赖缺失，安装器会跳过 autosuggestions、返回状态码 2，并提示重新使用 `--install-deps`，不会再进入注定失败的 C 编译。
+非 root 用户会收到一次 sudo 授权请求。等价的手动命令为 `sudo apt install build-essential bash-builtins libreadline-dev pkg-config python3`。若直接运行默认安装且编译依赖缺失，安装器会跳过 autosuggestions、返回状态码 2，并提示重新使用 `--install-deps`。
 
 编译产物会记录 Bash 完整版本。系统升级 Bash 后重新运行安装器，它会自动重编译，不会继续加载旧版本的 `.so`。
+
+### 自动建议兼容性与开关
+
+部分 Bash 内置的 Readline 存在事件钩子读键缺陷，例如已确认的 Ubuntu `bash 5.3-2ubuntu1` 组合：插件能加载，但交互输入卡住。修复见 GNU 的 [readline83-001](https://ftp.gnu.org/gnu/readline/readline-8.3-patches/readline83-001)。项目根据实际交互行为判断，不按 Ubuntu 版本号永久禁用。
+
+安装或更新后，只要插件存在且未被用户关闭，安装器就会使用 Python 3 在独立伪终端中检查输入。先检查没有插件的 Bash，再检查同步和异步自动建议与项目缩写绑定下的字符输入、空格、回车、退格及历史调用。每个测试最多 10 秒，并清理测试进程；不读取个人历史或执行 `user/local.sh`。
+
+只有检测通过才自动加载插件。插件不兼容时安装器给出降级提示，其他组件继续使用；兼容性降级本身不使安装失败。缺少 Python、Linux `/proc` 或无法使用伪终端时，状态为「未验证」，也不会加载插件。其他自定义键盘绑定、fzf 和用户配置之间的冲突仍需单独排查。
+
+```bash
+bash-modern autosuggestions check  # 重新检测；保留用户的关闭选择
+bash-modern autosuggestions off    # 持久关闭，对新会话生效
+bash-modern autosuggestions on     # 检测通过后启用，对新会话生效
+bash-modern doctor
+```
+
+`on` 也支持此前手动改名为 `bash-autosuggestions.so.disabled` 的恢复流程：仅在检测通过后改回 `.so`。失败时保持禁用。执行成功后重新登录 SSH 或运行 `exec bash`。
+
+`doctor` 会区分正常、用户关闭、插件缺失、需要重编译、不兼容和未验证。关闭选择存放在 `user/autosuggestions.disabled`，重装和更新会保留；检测结果存放在 `user/autosuggestions-check.json`。缓存关联实际 Bash 二进制、插件、探测程序、受测绑定和运行时依赖，文件或动态链接缓存变化后失效。同一 `BASH_VERSION` 的不同二进制也需要重新验证。
+
+登录时只校验缓存，不执行交互探测或自动编译。更新系统 Bash 或相关库后，可执行 `bash-modern autosuggestions check` 重新验证；设置了 `LD_PRELOAD`、`LD_LIBRARY_PATH` 或 `LD_AUDIT` 的环境不在隔离检测范围内，保持未验证。此兼容方案不替换系统 Bash、不修改登录 shell，也不自动下载修复版 Bash。
 
 ### 安装可选增强工具
 
@@ -268,6 +289,7 @@ bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次�
 ├── bashrc.d/
 ├── commands.d/
 ├── bin/
+├── lib/
 ├── vendor/
 ├── user/
 ├── starship.toml
@@ -339,7 +361,14 @@ bash --norc --noprofile
 # <<< bash-modern-server <<<
 ```
 
-所有集成都先检查文件或命令是否存在，因此下载或编译失败不会让新登录会话失效。安装日志会指出被跳过的组件，并以状态码 2 结束，方便自动化部署发现未完整安装；修复网络或依赖后重复运行即可。
+自动建议导致输入异常时，可从另一个干净会话持久关闭它：
+
+```bash
+ssh -tt 用户名@服务器地址 '/bin/bash --noprofile --norc -i'
+~/.config/bash-modern/bin/bash-modern autosuggestions off
+```
+
+原生自动建议除了检查文件和 Bash 版本，还必须通过交互检测才能加载。下载或编译组件失败时，安装器以状态码 2 结束；交互检测失败则保留其余功能并报告降级原因。修复网络或编译依赖后重新安装；修复运行时兼容性后执行 `bash-modern autosuggestions check`。
 
 ## 安全说明
 
@@ -354,3 +383,17 @@ bash --norc --noprofile
 ```
 
 它会验证首次安装、重复安装、备份、回滚和卸载。
+
+自动建议的缓存失效、持久开关、加载保护、伪终端超时与终端控制序列回归测试：
+
+```bash
+python3 -B tests/test_autosuggestions.py
+```
+
+Linux 上还可运行真实原生插件回归测试（需要联网，以及 `build-essential bash-builtins libreadline-dev pkg-config python3 ca-certificates patch`）：
+
+```bash
+python3 -B tests/readline_regression.py
+```
+
+它在临时目录构建未修复和已修复的 Bash 5.3.9，使用固定提交的自动建议插件，验证前者被拒绝、后者通过，且相同版本号的不同 Bash 不共享通过结果。构建产物保留在输出的临时目录中，不修改系统 Bash 或个人配置。
