@@ -15,6 +15,7 @@ spec = importlib.util.spec_from_file_location('autosuggestions', ROOT / 'lib/aut
 autosuggestions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(autosuggestions)
 PLUGIN_COMMIT = 'd663277e5cb37259f49f69fa7455cc21946f4d39'
+FIXED_PLUGIN_COMMIT = '4db0812f9f5f1a6c2ab7a6603c85fc97ccb763e0'
 
 
 def run(argv, cwd=None, timeout_ms=1800000):
@@ -84,9 +85,11 @@ def main():
     if 'right margin' not in autosuggestions.status(home, good_bash, version)[1]:
         raise RuntimeError('Expected a display incompatibility after fixing Readline input')
 
-    run([good_bash, '-c', 'source "$1"; _bash_modern_build_autosuggestions "$2" "$3" "$4"',
-         'build', ROOT / 'lib/autosuggestions-build.sh', plugin,
-         ROOT / 'patches/bash-autosuggestions-deferred-wrap.patch', prefix / 'include'])
+    for name in ('Makefile', 'src/bash_autosuggestions.c', 'bash-autosuggestions.bash'):
+        download(f'https://raw.githubusercontent.com/gucheen/bash-autosuggestions/{FIXED_PLUGIN_COMMIT}/{name}',
+                 plugin / name)
+    run([good_bash, '-c', 'source "$1"; _bash_modern_build_autosuggestions "$2" "$3"',
+         'build', ROOT / 'lib/autosuggestions-build.sh', plugin, prefix / 'include'])
     if autosuggestions.check(home, good_bash, version) != 0:
         raise RuntimeError('Corrected Bash and suggestion renderer did not pass')
     if autosuggestions.status(home, good_bash, version)[0] != 'passed':

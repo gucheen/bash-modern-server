@@ -126,14 +126,19 @@ install_fzf() {
 }
 
 install_bash_autosuggestions() {
-    local target="${stage}/vendor/bash-autosuggestions" built_for bash_include
-    local display_patch="${ROOT_DIR}/patches/bash-autosuggestions-deferred-wrap.patch"
+    local target="${stage}/vendor/bash-autosuggestions" built_for bash_include origin refresh=0
+    local source_url=https://github.com/gucheen/bash-autosuggestions.git
+    origin=$(git -C "${target}" remote get-url origin 2>/dev/null || true)
+    if [[ ${UPDATE} -eq 1 || ${origin} != "${source_url}" ||
+          ! -r "${target}/src/bash_autosuggestions.c" || ! -r "${target}/Makefile" ||
+          ! -r "${target}/bash-autosuggestions.bash" ]]; then
+        refresh=1
+    fi
+    rm -f "${target}/.bash-modern-display-patch" || return 1
     built_for=
     [[ -r "${target}/.bash-version" ]] && built_for=$(<"${target}/.bash-version")
-    [[ ${UPDATE} -eq 1 ]] && rm -rf "${target}"
-    if [[ ${built_for} == "${BASH_VERSION}" && -r "${target}/bash-autosuggestions.bash" &&
-          -f "${target}/bash-autosuggestions.so" ]] &&
-       cmp -s "${display_patch}" "${target}/.bash-modern-display-patch"; then
+    if [[ ${refresh} -eq 0 && ${built_for} == "${BASH_VERSION}" ]] &&
+       [[ -f "${target}/bash-autosuggestions.so" || -f "${target}/bash-autosuggestions.so.disabled" ]]; then
         return 0
     fi
     if ! command -v git >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1 ||
@@ -147,14 +152,16 @@ install_bash_autosuggestions() {
         warn "bash-autosuggestions headers are missing; rerun with --install-deps"
         return 1
     fi
-    if [[ ! -r "${target}/src/bash_autosuggestions.c" || ! -r "${target}/Makefile" ||
-          ! -r "${target}/bash-autosuggestions.bash" ]]; then
+    if [[ ${refresh} -eq 1 ]]; then
+        if [[ ! -f "${target}/bash-autosuggestions.so" && -f "${target}/bash-autosuggestions.so.disabled" ]]; then
+            touch "${stage}/user/autosuggestions.disabled" || return 1
+        fi
         info "Downloading bash-autosuggestions"
         rm -rf "${target}"
-        git clone --depth 1 https://github.com/gucheen/bash-autosuggestions.git "${target}" || return 1
+        git clone --depth 1 "${source_url}" "${target}" || return 1
     fi
-    info "Building bash-autosuggestions with the terminal wrap fix"
-    _bash_modern_build_autosuggestions "${target}" "${display_patch}" "${bash_include}"
+    info "Building bash-autosuggestions"
+    _bash_modern_build_autosuggestions "${target}" "${bash_include}"
 }
 
 install_zoxide() {

@@ -226,9 +226,9 @@ bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次�
 
 安装或更新后，只要插件存在且未被用户关闭，安装器就会使用 Python 3 在独立伪终端中检查输入。先检查没有插件的 Bash，再检查同步和异步自动建议与项目缩写绑定下的字符输入、空格、回车、退格及历史调用。同时使用临时历史检查建议恰好填满一行或两行时的光标位置，拒绝会使输入行向上漂移的插件。每个测试最多 10 秒，并清理测试进程；不读取个人历史或执行 `user/local.sh`。
 
-如果输入字符后光标向右上方移动、覆盖之前的输出，而回车或 `Ctrl+C` 只能短暂恢复，可能是自动建议在终端右边界的换行计算错误：终端填满最后一列后，要等下一个可见字符才真正换行，问题插件却提前按已换行恢复光标。已在 Debian Bash 5.2 的同步和异步模式下复现，因此仅关闭异步不能解决。本项目的 `patches/bash-autosuggestions-deferred-wrap.patch` 修复了这个绘制顺序：先用空格和退格完成待发生的换行，再恢复输入光标，保留自动建议功能。
+如果输入字符后光标向右上方移动、覆盖之前的输出，而回车或 `Ctrl+C` 只能短暂恢复，可能是自动建议在终端右边界的换行计算错误：终端填满最后一列后，要等下一个可见字符才真正换行，问题插件却提前按已换行恢复光标。已在 Debian Bash 5.2 的同步和异步模式下复现，因此仅关闭异步不能解决。[gucheen/bash-autosuggestions](https://github.com/gucheen/bash-autosuggestions) 已在源码中修复这个绘制顺序，安装器直接编译该 fork。
 
-把新版项目同步到服务器后，运行普通安装即可应用补丁并重编译；已有完整插件源码时直接复用，`--update` 才会重新下载源码。安装器通过补丁记录识别旧二进制，因此即使 Bash 版本未改变也会重编译。已应用同一补丁的产物不会重复编译。若曾手动关闭建议，检测通过后再显式启用：
+把新版项目同步到服务器后，运行普通安装即可切换：已有插件来自其他仓库或缺少完整源码时，会重新下载 fork 并编译，即使 Bash 版本未改变也不会复用旧二进制。已来自该 fork 且 Bash 版本一致的产物会直接复用；`--update` 会强制重新下载和编译。用户的关闭选择会保留，包括此前通过改名禁用的插件。若曾手动关闭建议，检测通过后再显式启用：
 
 ```bash
 ./install.sh
@@ -236,7 +236,7 @@ bash-modern autosuggestions on
 exec bash
 ```
 
-缺少构建依赖时先运行 `./install.sh --install-deps`。`--skip-downloads` 仍只部署配置和重新检测，不会修补或重编译已有插件。补丁不能应用或编译失败时安装器报告失败；编译成功后仍须通过输入和显示检测才能启用。补丁不修复系统 Readline 的独立读键缺陷，该缺陷仍会被检测并阻止加载。
+缺少构建依赖时先运行 `./install.sh --install-deps`。`--skip-downloads` 仍只部署配置和重新检测，不会切换来源或重编译已有插件。下载或编译失败时安装器报告失败；编译成功后仍须通过输入和显示检测才能启用。插件源码修复不涉及系统 Readline 的独立读键缺陷，该缺陷仍会被检测并阻止加载。
 
 登录时的兼容判断使用固定 ASCII 提示符下的边界重绘测试，不代表已经验证所有终端、Unicode、fzf 或 Vim 的交互组合。
 
@@ -388,7 +388,7 @@ ssh -tt 用户名@服务器地址 '/bin/bash --noprofile --norc -i'
 
 ## 安全说明
 
-在上游接受修复 PR 前，bash-autosuggestions 暂时从 [gucheen/bash-autosuggestions](https://github.com/gucheen/bash-autosuggestions) 下载；已有安装运行 `./install.sh --update` 后会从该 fork 重新下载源码。fzf 和 zoxide 仍从各自的上游 GitHub 仓库下载；启用 Starship 时才会访问其上游。fzf 和 bash-autosuggestions 使用 Git 仓库；zoxide 和 Starship 使用各自安装脚本，并把产物写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
+在上游接受修复 PR 前，bash-autosuggestions 暂时从 [gucheen/bash-autosuggestions](https://github.com/gucheen/bash-autosuggestions) 下载；已有安装运行 `./install.sh` 会自动检查并切换来源，`./install.sh --update` 会强制刷新源码。fzf 和 zoxide 仍从各自的上游 GitHub 仓库下载；启用 Starship 时才会访问其上游。fzf 和 bash-autosuggestions 使用 Git 仓库；zoxide 和 Starship 使用各自安装脚本，并把产物写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
 
 ## 验证项目
 
@@ -421,4 +421,4 @@ Linux 上还可运行真实原生插件回归测试（需要联网，以及 `bui
 python3 -B tests/readline_regression.py
 ```
 
-它在临时目录构建未修复和已修复的 Bash 5.3.9，使用固定提交的自动建议插件，分别验证读键缺陷和边界重绘缺陷被拒绝，再通过安装器使用的源码补丁和构建函数修复插件，验证修复后的组合通过，且相同版本号的不同 Bash 不共享通过结果。构建产物保留在输出的临时目录中，不修改系统 Bash 或个人配置。
+它在临时目录构建未修复和已修复的 Bash 5.3.9，使用固定提交的自动建议插件，分别验证读键缺陷和边界重绘缺陷被拒绝，再下载 fork 中固定的修复提交，通过安装器使用的构建函数编译插件，验证修复后的组合通过，且相同版本号的不同 Bash 不共享通过结果。构建产物保留在输出的临时目录中，不修改系统 Bash 或个人配置。
