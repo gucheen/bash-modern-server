@@ -216,7 +216,7 @@ bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次�
 ./install.sh --install-deps
 ```
 
-非 root 用户会收到一次 sudo 授权请求。等价的手动命令为 `sudo apt install build-essential bash-builtins libreadline-dev pkg-config python3`。若直接运行默认安装且编译依赖缺失，安装器会跳过 autosuggestions、返回状态码 2，并提示重新使用 `--install-deps`。
+非 root 用户会收到一次 sudo 授权请求。等价的手动命令为 `sudo apt install build-essential bash-builtins libreadline-dev pkg-config python3 git`。若直接运行默认安装且编译依赖缺失，安装器会跳过 autosuggestions、返回状态码 2，并提示重新使用 `--install-deps`。
 
 编译产物会记录 Bash 完整版本。系统升级 Bash 后重新运行安装器，它会自动重编译，不会继续加载旧版本的 `.so`。
 
@@ -224,7 +224,21 @@ bash-autosuggestions 需要针对服务器上的 Bash/Readline 编译。首次�
 
 部分 Bash 内置的 Readline 存在事件钩子读键缺陷，例如已确认的 Ubuntu `bash 5.3-2ubuntu1` 组合：插件能加载，但交互输入卡住。修复见 GNU 的 [readline83-001](https://ftp.gnu.org/gnu/readline/readline-8.3-patches/readline83-001)。项目根据实际交互行为判断，不按 Ubuntu 版本号永久禁用。
 
-安装或更新后，只要插件存在且未被用户关闭，安装器就会使用 Python 3 在独立伪终端中检查输入。先检查没有插件的 Bash，再检查同步和异步自动建议与项目缩写绑定下的字符输入、空格、回车、退格及历史调用。每个测试最多 10 秒，并清理测试进程；不读取个人历史或执行 `user/local.sh`。
+安装或更新后，只要插件存在且未被用户关闭，安装器就会使用 Python 3 在独立伪终端中检查输入。先检查没有插件的 Bash，再检查同步和异步自动建议与项目缩写绑定下的字符输入、空格、回车、退格及历史调用。同时使用临时历史检查建议恰好填满一行或两行时的光标位置，拒绝会使输入行向上漂移的插件。每个测试最多 10 秒，并清理测试进程；不读取个人历史或执行 `user/local.sh`。
+
+如果输入字符后光标向右上方移动、覆盖之前的输出，而回车或 `Ctrl+C` 只能短暂恢复，可能是自动建议在终端右边界的换行计算错误：终端填满最后一列后，要等下一个可见字符才真正换行，问题插件却提前按已换行恢复光标。已在 Debian Bash 5.2 的同步和异步模式下复现，因此仅关闭异步不能解决。本项目的 `patches/bash-autosuggestions-deferred-wrap.patch` 修复了这个绘制顺序：先用空格和退格完成待发生的换行，再恢复输入光标，保留自动建议功能。
+
+把新版项目同步到服务器后，运行普通安装即可应用补丁并重编译；已有完整插件源码时直接复用，`--update` 才会重新下载源码。安装器通过补丁记录识别旧二进制，因此即使 Bash 版本未改变也会重编译。已应用同一补丁的产物不会重复编译。若曾手动关闭建议，检测通过后再显式启用：
+
+```bash
+./install.sh
+bash-modern autosuggestions on
+exec bash
+```
+
+缺少构建依赖时先运行 `./install.sh --install-deps`。`--skip-downloads` 仍只部署配置和重新检测，不会修补或重编译已有插件。补丁不能应用或编译失败时安装器报告失败；编译成功后仍须通过输入和显示检测才能启用。补丁不修复系统 Readline 的独立读键缺陷，该缺陷仍会被检测并阻止加载。
+
+登录时的兼容判断使用固定 ASCII 提示符下的边界重绘测试，不代表已经验证所有终端、Unicode、fzf 或 Vim 的交互组合。
 
 只有检测通过才自动加载插件。插件不兼容时安装器给出降级提示，其他组件继续使用；兼容性降级本身不使安装失败。缺少 Python、Linux `/proc` 或无法使用伪终端时，状态为「未验证」，也不会加载插件。其他自定义键盘绑定、fzf 和用户配置之间的冲突仍需单独排查。
 
@@ -374,7 +388,7 @@ ssh -tt 用户名@服务器地址 '/bin/bash --noprofile --norc -i'
 
 ## 安全说明
 
-默认安装器从 fzf、bash-autosuggestions 和 zoxide 的上游 GitHub 仓库下载组件；启用 Starship 时才会访问第四个上游。fzf 和 bash-autosuggestions 使用 Git 仓库；zoxide 和 Starship 使用各自安装脚本，并把产物写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
+在上游接受修复 PR 前，bash-autosuggestions 暂时从 [gucheen/bash-autosuggestions](https://github.com/gucheen/bash-autosuggestions) 下载；已有安装运行 `./install.sh --update` 后会从该 fork 重新下载源码。fzf 和 zoxide 仍从各自的上游 GitHub 仓库下载；启用 Starship 时才会访问其上游。fzf 和 bash-autosuggestions 使用 Git 仓库；zoxide 和 Starship 使用各自安装脚本，并把产物写入本项目的用户级目录。对版本和供应链有严格要求的环境，建议审查后在内部制品库固定这些来源，再修改 `install.sh` 的下载地址。
 
 ## 验证项目
 
@@ -390,12 +404,21 @@ ssh -tt 用户名@服务器地址 '/bin/bash --noprofile --norc -i'
 
 ```bash
 python3 -B tests/test_autosuggestions.py
+python3 -B tests/test_autosuggestions_build.py
 ```
 
-Linux 上还可运行真实原生插件回归测试（需要联网，以及 `build-essential bash-builtins libreadline-dev pkg-config python3 ca-certificates patch`）：
+原生插件的独立终端显示回归需要 Linux、`python3-pyte` 和已编译的插件。它检查 40/80/120 列窗口下建议填满一行、两行及相邻长度的显示、光标位置、退格、接受建议和中断后继续输入。加上 `--full-screen` 会额外检查退出 Vim 和取消 fzf 历史搜索后的输入（需安装 `vim-tiny` 和 `fzf`）：
+
+```bash
+python3 -B tests/display_regression.py \
+    --plugin ~/.config/bash-modern/vendor/bash-autosuggestions/bash-autosuggestions.so \
+    --full-screen
+```
+
+Linux 上还可运行真实原生插件回归测试（需要联网，以及 `build-essential bash-builtins libreadline-dev pkg-config python3 git ca-certificates patch`）：
 
 ```bash
 python3 -B tests/readline_regression.py
 ```
 
-它在临时目录构建未修复和已修复的 Bash 5.3.9，使用固定提交的自动建议插件，验证前者被拒绝、后者通过，且相同版本号的不同 Bash 不共享通过结果。构建产物保留在输出的临时目录中，不修改系统 Bash 或个人配置。
+它在临时目录构建未修复和已修复的 Bash 5.3.9，使用固定提交的自动建议插件，分别验证读键缺陷和边界重绘缺陷被拒绝，再通过安装器使用的源码补丁和构建函数修复插件，验证修复后的组合通过，且相同版本号的不同 Bash 不共享通过结果。构建产物保留在输出的临时目录中，不修改系统 Bash 或个人配置。

@@ -119,7 +119,7 @@ install_optional() {
 }
 
 install_build_deps() {
-    apt_install build-essential bash-builtins libreadline-dev pkg-config python3
+    apt_install build-essential bash-builtins libreadline-dev pkg-config python3 git
 }
 
 autosuggestions() {

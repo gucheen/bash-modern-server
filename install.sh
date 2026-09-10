@@ -7,6 +7,7 @@ set -o pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "${ROOT_DIR}/lib/common.sh"
+source "${ROOT_DIR}/lib/autosuggestions-build.sh"
 
 DOWNLOADS=1
 OPTIONAL_TOOLS=0
@@ -126,14 +127,15 @@ install_fzf() {
 
 install_bash_autosuggestions() {
     local target="${stage}/vendor/bash-autosuggestions" built_for bash_include
+    local display_patch="${ROOT_DIR}/patches/bash-autosuggestions-deferred-wrap.patch"
     built_for=
     [[ -r "${target}/.bash-version" ]] && built_for=$(<"${target}/.bash-version")
     [[ ${UPDATE} -eq 1 ]] && rm -rf "${target}"
     if [[ ${built_for} == "${BASH_VERSION}" && -r "${target}/bash-autosuggestions.bash" &&
-          -f "${target}/bash-autosuggestions.so" ]]; then
+          -f "${target}/bash-autosuggestions.so" ]] &&
+       cmp -s "${display_patch}" "${target}/.bash-modern-display-patch"; then
         return 0
     fi
-    rm -rf "${target}"
     if ! command -v git >/dev/null 2>&1 || ! command -v make >/dev/null 2>&1 ||
        ! command -v cc >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then
         warn "bash-autosuggestions build tools are missing; rerun with --install-deps"
@@ -145,13 +147,14 @@ install_bash_autosuggestions() {
         warn "bash-autosuggestions headers are missing; rerun with --install-deps"
         return 1
     fi
-    info "Installing bash-autosuggestions"
-    if ! git clone --depth 1 https://github.com/wallentx/bash-autosuggestions.git "${target}" ||
-       ! make -C "${target}" all BASH_INCLUDE="${bash_include}"; then
+    if [[ ! -r "${target}/src/bash_autosuggestions.c" || ! -r "${target}/Makefile" ||
+          ! -r "${target}/bash-autosuggestions.bash" ]]; then
+        info "Downloading bash-autosuggestions"
         rm -rf "${target}"
-        return 1
+        git clone --depth 1 https://github.com/gucheen/bash-autosuggestions.git "${target}" || return 1
     fi
-    printf '%s\n' "${BASH_VERSION}" >"${target}/.bash-version"
+    info "Building bash-autosuggestions with the terminal wrap fix"
+    _bash_modern_build_autosuggestions "${target}" "${display_patch}" "${bash_include}"
 }
 
 install_zoxide() {

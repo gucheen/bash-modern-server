@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Gate native autosuggestions on a cached, isolated interactive input test."""
+"""Gate native autosuggestions on cached, isolated input and display checks."""
 
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import select
 import signal
 import tempfile
@@ -62,8 +63,65 @@ class ProbeFailure(Exception):
     pass
 
 
+class ProbeCursor:
+    """Track the ASCII probe's cursor, including the terminal's deferred wrap."""
+
+    def __init__(self, columns=120, rows=24):
+        self.columns, self.rows = columns, rows
+        self.x = self.y = 0
+        self.pending = b''
+
+    def feed(self, data):
+        self.pending += data
+        while self.pending:
+            if self.pending.startswith(b'\x1b'):
+                if len(self.pending) < 2:
+                    return
+                if not self.pending.startswith(b'\x1b['):
+                    raise ProbeFailure('unexpected terminal escape in display check')
+                match = re.match(rb'\x1b\[([0-?]*)([ -/]*)([@-~])', self.pending)
+                if not match:
+                    return
+                parameters, intermediate, operation = match.groups()
+                self.pending = self.pending[match.end():]
+                if operation in (b'm', b'K', b'J', b'h', b'l'):
+                    continue
+                if intermediate or (parameters and not parameters.isdigit()):
+                    raise ProbeFailure('unexpected cursor parameters in display check')
+                amount = int(parameters or b'1') or 1
+                self.x = min(self.x, self.columns - 1)
+                if operation == b'A':
+                    self.y = max(0, self.y - amount)
+                elif operation == b'B':
+                    self.y = min(self.rows - 1, self.y + amount)
+                elif operation == b'C':
+                    self.x = min(self.columns - 1, self.x + amount)
+                elif operation == b'D':
+                    self.x = max(0, self.x - amount)
+                elif operation == b'G':
+                    self.x = min(self.columns - 1, amount - 1)
+                else:
+                    raise ProbeFailure('unexpected cursor operation in display check')
+                continue
+            character, self.pending = self.pending[0], self.pending[1:]
+            if character == 13:
+                self.x = 0
+            elif character == 10:
+                self.y = min(self.rows - 1, self.y + 1)
+            elif character == 8:
+                self.x = max(0, self.x - 1)
+            elif 32 <= character < 127:
+                # Filling the last column does not wrap until another character is printed.
+                if self.x == self.columns:
+                    self.x = 0
+                    self.y = min(self.rows - 1, self.y + 1)
+                self.x += 1
+            elif character != 7:
+                raise ProbeFailure('unexpected character in display check')
+
+
 def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
-          inspect_dependencies=True, dependencies=None):
+          inspect_dependencies=True, dependencies=None, check_display=True):
     import pty
     import termios
     import struct
@@ -73,6 +131,12 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
         directory = Path(temporary)
         (directory / 'user').mkdir()
         rc = directory / 'rc'
+        prompt = b'BASH_MODERN_PROBE> '
+        columns = 120
+        display_setup = "printf '\\n\\n\\n\\n'\n"
+        for index, prefix in enumerate(('#a ', '#b '), 1):
+            command = prefix + 'x' * (columns * index - len(prompt) - len(prefix))
+            display_setup += 'history -s "' + command + '"\n'
         rc.write_text(
             "PS1='BASH_MODERN_PROBE> '\nPS2='MORE> '\n"
             "HISTFILE=/dev/null\nset -o emacs\n"
@@ -84,6 +148,7 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
             '  source "$PROBE_ABBR"\n'
             "  abbr --define bmprobe printf\n"
             'fi\n'
+            + (display_setup if check_display else '')
         )
         environment = {
             'HOME': str(directory), 'BASH_MODERN_HOME': str(directory),
@@ -103,23 +168,31 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
         pending = b''
         total_output = 0
         deadline = time.monotonic() + timeout_ms / 1000
+        cursor = ProbeCursor(columns)
+
+        def receive():
+            nonlocal pending, total_output
+            try:
+                data = os.read(master, 4096)
+            except OSError as error:
+                raise ProbeFailure('test shell exited before completing input') from error
+            if not data:
+                raise ProbeFailure('test shell exited before completing input')
+            total_output += len(data)
+            if total_output > MAX_OUTPUT:
+                raise ProbeFailure('test shell produced excessive output')
+            pending += data
+            if check_display:
+                cursor.feed(data)
+            return data
 
         def expect(token):
-            nonlocal pending, total_output
+            nonlocal pending
             while token not in pending:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or not select.select([master], [], [], remaining)[0]:
                     raise ProbeFailure('interactive input timed out')
-                try:
-                    data = os.read(master, 4096)
-                except OSError as error:
-                    raise ProbeFailure('test shell exited before completing input') from error
-                if not data:
-                    raise ProbeFailure('test shell exited before completing input')
-                total_output += len(data)
-                if total_output > MAX_OUTPUT:
-                    raise ProbeFailure('test shell produced excessive output')
-                pending += data
+                receive()
             pending = pending.split(token, 1)[1]
 
         def type_keys(keys):
@@ -133,8 +206,8 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
                 time.sleep(0.003)
 
         try:
-            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 120, 0, 0))
-            expect(b'BASH_MODERN_PROBE> ')
+            fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 24, columns, 0, 0))
+            expect(prompt)
             if dependencies is None:
                 dependencies = []
             if inspect_dependencies:
@@ -142,6 +215,25 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
                 if plugin:
                     excluded.add(str(plugin.resolve()))
                 dependencies.extend(mapped_dependencies(pid, excluded))
+            if check_display:
+                for prefix in (b'#a ', b'#b '):
+                    start_x, start_y = cursor.x, cursor.y
+                    rendered = b''
+                    for index, key in enumerate(prefix, 1):
+                        type_keys(bytes([key]))
+                        settle = min(deadline, time.monotonic() + 0.15)
+                        while time.monotonic() < settle:
+                            if select.select([master], [], [], max(0, settle - time.monotonic()))[0]:
+                                rendered += receive()
+                        if time.monotonic() >= deadline:
+                            raise ProbeFailure('display check timed out')
+                        if (cursor.x, cursor.y) != (start_x + index, start_y):
+                            raise ProbeFailure('suggestion at terminal right margin moves the input cursor')
+                    if plugin and b'x' * 20 not in rendered:
+                        raise ProbeFailure('history suggestion was not rendered in display check')
+                    type_keys(b'\x15\r')
+                    expect(b'\r\n')
+                    expect(prompt)
             type_keys(b"printf '%s%s\\n' BM_ SPACE\r")
             # Bracketed-paste teardown can put an escape sequence and CR before output.
             expect(b'BM_SPACE\r\n')
@@ -256,7 +348,7 @@ def check(home, bash, version, enable=False):
             plugin.rename(plugin_path(home))
             plugin = plugin_path(home)
             record['fingerprint'] = fingerprint(home, bash, version, plugin)
-        record.update(status='passed', detail='ok (interactive input verified)')
+        record.update(status='passed', detail='ok (interactive input and display verified)')
     except ProbeFailure as error:
         record.update(status='incompatible', detail='incompatible; disabled (' + str(error) + ')')
     except (OSError, ImportError, ValueError) as error:

@@ -68,17 +68,32 @@ def main():
     run(['make', 'all', 'BASH_INCLUDE=' + str(prefix / 'include')], cwd=plugin)
     version = subprocess.check_output([str(bad_bash), '-c', 'printf %s "$BASH_VERSION"'], text=True, timeout=10)
     (plugin / '.bash-version').write_text(version + '\n')
+    try:
+        autosuggestions.probe(bad_bash, home, plugin / 'bash-autosuggestions.so', check_display=False)
+    except autosuggestions.ProbeFailure:
+        pass
+    else:
+        raise RuntimeError('Unpatched Bash unexpectedly passed the input-only check')
+    autosuggestions.probe(good_bash, home, plugin / 'bash-autosuggestions.so', check_display=False)
     if autosuggestions.check(home, bad_bash, version) != 2:
         raise RuntimeError('Unpatched Bash was not rejected')
     if autosuggestions.status(home, bad_bash, version)[0] != 'incompatible':
         raise RuntimeError('Expected an input incompatibility, not an unavailable test environment')
+    if autosuggestions.check(home, good_bash, version) != 2:
+        raise RuntimeError('Faulty suggestion rendering was not rejected')
+    if 'right margin' not in autosuggestions.status(home, good_bash, version)[1]:
+        raise RuntimeError('Expected a display incompatibility after fixing Readline input')
+
+    run([good_bash, '-c', 'source "$1"; _bash_modern_build_autosuggestions "$2" "$3" "$4"',
+         'build', ROOT / 'lib/autosuggestions-build.sh', plugin,
+         ROOT / 'patches/bash-autosuggestions-deferred-wrap.patch', prefix / 'include'])
     if autosuggestions.check(home, good_bash, version) != 0:
-        raise RuntimeError('Patched Bash did not pass interactive input')
+        raise RuntimeError('Corrected Bash and suggestion renderer did not pass')
     if autosuggestions.status(home, good_bash, version)[0] != 'passed':
         raise RuntimeError('Successful check was not cached')
     if autosuggestions.status(home, bad_bash, version)[0] != 'unverified':
         raise RuntimeError('A different Bash binary reused the successful cache')
-    print('PASS: faulty Bash rejected, patched Bash accepted, same-version binary cache invalidated.')
+    print('PASS: faulty input and display rejected, corrected pair accepted, binary cache invalidated.')
 
 
 if __name__ == '__main__':

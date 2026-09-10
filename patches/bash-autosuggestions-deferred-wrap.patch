@@ -1,0 +1,14 @@
+diff --git a/src/bash_autosuggestions.c b/src/bash_autosuggestions.c
+--- a/src/bash_autosuggestions.c
++++ b/src/bash_autosuggestions.c
+@@ -1230,7 +1230,9 @@ static void bas_draw_suggestion(void) {
+   bas_move_cursor(out, cursor_row, suggestion_row, suggestion_col);
+   fputs(style, out);
+   fputs(bas_suffix, out);
+-  fputs("\033[0m", out);
++  /* Complete any pending right-margin wrap before restoring the cursor:
++     the calculated row count already includes that wrap. */
++  fputs("\033[0m \b", out);
+   bas_move_cursor(out, bas_drawn_end_row, cursor_row, cursor_col);
+   fflush(out);
+ }

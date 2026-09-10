@@ -23,6 +23,29 @@ VERSION = subprocess.check_output(
 ).strip()
 
 
+class DisplayTests(unittest.TestCase):
+    def test_right_margin_waits_for_next_character_before_wrapping(self):
+        cursor = autosuggestions.ProbeCursor(columns=10)
+        cursor.feed(b'\n\n1234567890\x1b[0m')
+        self.assertEqual((cursor.x, cursor.y), (10, 2))
+        cursor.feed(b'\x1b[3G')
+        self.assertEqual((cursor.x, cursor.y), (2, 2))
+        cursor.feed(b'123456789')
+        self.assertEqual((cursor.x, cursor.y), (1, 3))
+
+    def test_fragmented_suggestion_repaint_preserves_cursor(self):
+        cursor = autosuggestions.ProbeCursor(columns=10)
+        for chunk in (b'\n\nP> e', b'\x1b[38;', b'5;8mcho xxx',
+                      b'\x1b[0m\x1b[', b'1A\x1b[5G'):
+            cursor.feed(chunk)
+        self.assertEqual((cursor.x, cursor.y), (4, 2))
+
+    def test_exact_width_suggestion_repaint_moves_above_prompt(self):
+        cursor = autosuggestions.ProbeCursor(columns=10)
+        cursor.feed(b'\n\nP> e\x1b[38;5;8mcho xx\x1b[0m\x1b[1A\x1b[5G')
+        self.assertEqual((cursor.x, cursor.y), (4, 1))
+
+
 class CompatibilityTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='autosuggestions-test-')
@@ -173,6 +196,20 @@ class CompatibilityTests(unittest.TestCase):
     def test_real_bash_input(self):
         autosuggestions.probe(BASH, self.home, inspect_dependencies=sys.platform.startswith('linux'))
 
+    def test_display_corruption_is_rejected_before_enter(self):
+        fake = Path(self.temporary.name) / 'bad-display'
+        fake.write_text(f'''#!{sys.executable}
+import os, tty
+tty.setraw(0)
+os.write(1, b'\\r\\n' * 4 + b'BASH_MODERN_PROBE> ')
+os.read(0, 1)
+os.write(1, b'#\\x1b[20G\\x1b[38;5;8m' + b'x' * 101 + b'\\x1b[0m\\x1b[1A\\x1b[20G')
+while os.read(0, 1): pass
+''')
+        fake.chmod(0o700)
+        with self.assertRaisesRegex(autosuggestions.ProbeFailure, 'right margin'):
+            autosuggestions.probe(fake, self.home, inspect_dependencies=False)
+
     def test_terminal_teardown_before_output(self):
         fake = Path(self.temporary.name) / 'terminal-replay'
         fake.write_text(f'''#!{sys.executable}
@@ -190,7 +227,7 @@ for expected, marker in [(b"printf '%s%s\\\\n' BM_ SPACE", b'BM_SPACE'), (b"prin
 while os.read(0, 1): pass
 ''')
         fake.chmod(0o700)
-        autosuggestions.probe(fake, self.home, inspect_dependencies=False)
+        autosuggestions.probe(fake, self.home, inspect_dependencies=False, check_display=False)
 
     def test_stuck_input_has_bounded_timeout(self):
         fake = Path(self.temporary.name) / 'stuck-input'
