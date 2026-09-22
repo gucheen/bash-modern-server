@@ -253,7 +253,7 @@ bash-modern doctor
 
 `doctor` 会区分正常、用户关闭、插件缺失、需要重编译、不兼容和未验证。关闭选择存放在 `user/autosuggestions.disabled`，重装和更新会保留；检测结果存放在 `user/autosuggestions-check.json`。缓存关联实际 Bash 二进制、插件、探测程序、受测绑定和运行时依赖，文件或动态链接缓存变化后失效。同一 `BASH_VERSION` 的不同二进制也需要重新验证。
 
-登录时只校验缓存，不执行交互探测或自动编译。更新系统 Bash 或相关库后，可执行 `bash-modern autosuggestions check` 重新验证；设置了 `LD_PRELOAD`、`LD_LIBRARY_PATH` 或 `LD_AUDIT` 的环境不在隔离检测范围内，保持未验证。此兼容方案不替换系统 Bash、不修改登录 shell，也不自动下载修复版 Bash。
+安装阶段执行完整交互检测。普通登录只校验文件元数据，未变化的文件不重复计算哈希；仅动态链接缓存变化时，使用隔离进程确认实际加载的依赖，依赖未变便直接刷新缓存。相关组件确实变化或缓存缺失时，自动执行一次完整检测，通过后在当前会话启用；多个会话通过锁共用检测结果。完整检测可能让首次登录多等待几秒，失败后不会在相同环境下反复自动重试，可执行 `bash-modern autosuggestions check` 手动重试。Bash 版本变化仍需重新运行安装器编译插件，登录时不自动编译。用户关闭的功能不会自动开启；设置了 `LD_PRELOAD`、`LD_LIBRARY_PATH` 或 `LD_AUDIT` 的环境不在隔离检测范围内，保持未验证。此兼容方案不替换系统 Bash、不修改登录 shell，也不自动下载修复版 Bash。
 
 ### 安装可选增强工具
 

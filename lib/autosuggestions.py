@@ -2,6 +2,7 @@
 """Gate native autosuggestions on cached, isolated input and display checks."""
 
 import argparse
+from contextlib import contextmanager, redirect_stdout
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import select
 import signal
+import sys
 import tempfile
 import time
 
@@ -33,16 +35,28 @@ def file_identity(path):
             'stat': [getattr(after, name) for name in attributes]}
 
 
-def fingerprint(home, bash, version, plugin):
+def cached_identity(path, cached=None):
+    path = Path(path)
+    current = path.stat()
+    attributes = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    if (cached and cached.get('path') == str(path.resolve()) and
+            cached.get('stat') == [getattr(current, name) for name in attributes]):
+        return cached
+    return file_identity(path)
+
+
+def fingerprint(home, bash, version, plugin, cached=None):
     paths = [bash, plugin, home / 'vendor/bash-autosuggestions/bash-autosuggestions.bash',
              home / 'vendor/bash-autosuggestions/.bash-version',
              home / 'lib/autosuggestions.py', home / 'bashrc.d/10-shell-options.sh',
              home / 'bashrc.d/40-abbreviations.sh']
+    cached = cached or {}
+    files = {entry['path']: entry for entry in cached.get('files', [])}
     linker = {}
     for path in (Path('/etc/ld.so.cache'), Path('/etc/ld.so.preload')):
-        linker[str(path)] = file_identity(path) if path.exists() else None
+        linker[str(path)] = cached_identity(path, cached.get('linker', {}).get(str(path))) if path.exists() else None
     return {'schema': SCHEMA, 'version': version, 'linker': linker,
-            'files': [file_identity(path) for path in paths]}
+            'files': [cached_identity(path, files.get(str(Path(path).resolve()))) for path in paths]}
 
 
 def mapped_dependencies(pid, excluded):
@@ -121,7 +135,8 @@ class ProbeCursor:
 
 
 def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
-          inspect_dependencies=True, dependencies=None, check_display=True):
+          inspect_dependencies=True, dependencies=None, check_display=True,
+          dependencies_only=False):
     import pty
     import termios
     import struct
@@ -215,6 +230,8 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
                 if plugin:
                     excluded.add(str(plugin.resolve()))
                 dependencies.extend(mapped_dependencies(pid, excluded))
+            if dependencies_only:
+                return dependencies
             if check_display:
                 for prefix in (b'#a ', b'#b '):
                     start_x, start_y = cursor.x, cursor.y
@@ -304,10 +321,10 @@ def status(home, bash, version, honor_off=True):
         if built_for != version:
             return 'mismatch', 'rebuild required (built for ' + built_for + ')'
         record = json.loads(cache_path(home).read_text())
-        if record.get('fingerprint') != fingerprint(home, bash, version, plugin):
+        if record.get('fingerprint') != fingerprint(home, bash, version, plugin, record.get('fingerprint')):
             return 'unverified', 'unverified (Bash, plugin or probe changed; run bash-modern autosuggestions check)'
         for dependency in record['dependencies']:
-            if file_identity(dependency['path']) != dependency:
+            if cached_identity(dependency['path'], dependency) != dependency:
                 return 'unverified', 'unverified (runtime libraries changed; run bash-modern autosuggestions check)'
         state = record['status']
         if state not in ('passed', 'incompatible', 'unverified'):
@@ -317,7 +334,67 @@ def status(home, bash, version, honor_off=True):
         return 'unverified', 'unverified (run bash-modern autosuggestions check)'
 
 
+@contextmanager
+def check_lock(home):
+    import fcntl
+    directory = home / 'user'
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / 'autosuggestions-check.lock').open('a') as lock:
+        deadline = time.monotonic() + 40
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise OSError('compatibility check is busy; retry')
+                time.sleep(0.05)
+        yield
+
+
 def check(home, bash, version, enable=False):
+    with check_lock(home):
+        return _check(home, bash, version, enable)
+
+
+def allow(home, bash, version):
+    state, _ = status(home, bash, version)
+    if state != 'unverified':
+        return state == 'passed'
+    if any(os.environ.get(name) for name in ('LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT')):
+        return False
+    with check_lock(home):
+        state, _ = status(home, bash, version)
+        if state != 'unverified':
+            return state == 'passed'
+        try:
+            record = json.loads(cache_path(home).read_text())
+            before = fingerprint(home, bash, version, plugin_path(home), record.get('fingerprint'))
+            previous = record.get('fingerprint') or {}
+            unchanged = all(before[key] == previous.get(key) for key in ('schema', 'version', 'files'))
+            dependencies_unchanged = all(cached_identity(d['path'], d) == d for d in record['dependencies'])
+            # Do not retry a failed check on every login when its environment is unchanged.
+            if before == previous and dependencies_unchanged:
+                return False
+            if unchanged and dependencies_unchanged and record['status'] == 'passed':
+                dependencies = []
+                for plugin in (None, plugin_path(home)):
+                    probe(bash, home, plugin, check_display=False, dependencies_only=True,
+                          dependencies=dependencies)
+                actual = {entry['path']: entry for entry in dependencies}
+                expected = {entry['path']: entry for entry in record['dependencies']}
+                if actual == expected and fingerprint(home, bash, version, plugin_path(home)) == before:
+                    record['fingerprint'] = before
+                    save_cache(home, record)
+                    return True
+        except (OSError, ValueError, KeyError, TypeError, ProbeFailure):
+            pass
+        with redirect_stdout(sys.stderr):
+            print('bash-modern: environment changed; checking autosuggestions compatibility…')
+            return _check(home, bash, version) == 0
+
+
+def _check(home, bash, version, enable=False):
     user_off = home / 'user/autosuggestions.disabled'
     plugin = plugin_path(home)
     if enable and not plugin.is_file() and plugin.with_name(plugin.name + '.disabled').is_file():
@@ -375,6 +452,8 @@ def main():
     args = parser.parse_args()
     if args.action in ('check', 'on'):
         return check(args.home, args.bash, args.version, args.action == 'on')
+    if args.action == 'allow':
+        return 0 if allow(args.home, args.bash, args.version) else 1
     state, detail = status(args.home, args.bash, args.version)
     if args.action == 'status':
         print(detail)

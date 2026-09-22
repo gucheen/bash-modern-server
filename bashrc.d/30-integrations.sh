@@ -9,7 +9,7 @@ fi
 
 if [[ -r "${BASH_MODERN_HOME}/lib/autosuggestions.sh" ]]; then
     source "${BASH_MODERN_HOME}/lib/autosuggestions.sh"
-    if _bash_modern_autosuggestions allow >/dev/null 2>&1; then
+    if _bash_modern_autosuggestions allow >/dev/null; then
         : "${BASH_AUTOSUGGEST_STRATEGY:=match_prev_cmd history}"
         : "${BASH_AUTOSUGGEST_USE_ASYNC:=auto}"
         source "${BASH_MODERN_HOME}/vendor/bash-autosuggestions/bash-autosuggestions.bash"

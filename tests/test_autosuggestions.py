@@ -108,6 +108,68 @@ class CompatibilityTests(unittest.TestCase):
         library.write_bytes(b'updated')
         self.assertEqual(self.state(), 'unverified')
 
+    def test_valid_cache_does_not_hash_files_or_probe(self):
+        self.passed_cache()
+        with patch.object(autosuggestions, 'file_identity', side_effect=AssertionError('unexpected hash')), \
+                patch.object(autosuggestions, 'probe') as probe:
+            self.assertTrue(autosuggestions.allow(self.home, BASH, VERSION))
+            probe.assert_not_called()
+
+    def stale_linker_cache(self, dependencies=None):
+        self.passed_cache(dependencies)
+        path = autosuggestions.cache_path(self.home)
+        import json
+        record = json.loads(path.read_text())
+        record['fingerprint']['linker'] = {'old-cache': None}
+        autosuggestions.save_cache(self.home, record)
+
+    def test_linker_change_with_same_dependencies_only_refreshes_cache(self):
+        self.stale_linker_cache()
+        with patch.object(autosuggestions, 'probe', return_value=[]) as probe, \
+                patch.object(autosuggestions, '_check') as check:
+            self.assertTrue(autosuggestions.allow(self.home, BASH, VERSION))
+            self.assertEqual(probe.call_count, 2)
+            self.assertTrue(all(call.kwargs['dependencies_only'] for call in probe.call_args_list))
+            check.assert_not_called()
+        self.assertEqual(self.state(), 'passed')
+
+    def test_linker_resolving_new_library_requires_full_check(self):
+        self.stale_linker_cache()
+        library = Path(self.temporary.name) / 'new-library.so'
+        library.write_bytes(b'new')
+        def inspect(*args, **kwargs):
+            kwargs['dependencies'].append(autosuggestions.file_identity(library))
+        with patch.object(autosuggestions, 'probe', side_effect=inspect), \
+                patch.object(autosuggestions, '_check', return_value=2) as check:
+            self.assertFalse(autosuggestions.allow(self.home, BASH, VERSION))
+            check.assert_called_once()
+
+    def test_changed_component_is_automatically_checked(self):
+        self.passed_cache()
+        self.plugin.write_bytes(b'changed')
+        with patch.object(autosuggestions, 'probe', return_value=[]) as probe:
+            self.assertTrue(autosuggestions.allow(self.home, BASH, VERSION))
+            self.assertEqual(probe.call_count, 3)
+        self.assertEqual(self.state(), 'passed')
+
+    def test_failed_auto_check_is_not_repeated_until_environment_changes(self):
+        self.passed_cache()
+        self.plugin.write_bytes(b'changed')
+        with patch.object(autosuggestions, 'probe', side_effect=OSError('no PTY')) as probe:
+            self.assertFalse(autosuggestions.allow(self.home, BASH, VERSION))
+            self.assertFalse(autosuggestions.allow(self.home, BASH, VERSION))
+            self.assertEqual(probe.call_count, 1)
+
+    def test_auto_check_honors_user_off_and_custom_linker(self):
+        self.stale_linker_cache()
+        with patch.object(autosuggestions, 'probe') as probe:
+            self.off.touch()
+            self.assertFalse(autosuggestions.allow(self.home, BASH, VERSION))
+            self.off.unlink()
+            with patch.dict(os.environ, {'LD_LIBRARY_PATH': '/custom'}):
+                self.assertFalse(autosuggestions.allow(self.home, BASH, VERSION))
+            probe.assert_not_called()
+
     def test_custom_linker_environment_is_unverified(self):
         self.passed_cache()
         with patch.dict(os.environ, {'LD_LIBRARY_PATH': '/custom/libraries'}):
