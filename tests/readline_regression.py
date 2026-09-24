@@ -80,6 +80,8 @@ def main():
         raise RuntimeError('Unpatched Bash was not rejected')
     if autosuggestions.status(home, bad_bash, version)[0] != 'incompatible':
         raise RuntimeError('Expected an input incompatibility, not an unavailable test environment')
+    if 'interactive input timed out' not in autosuggestions.status(home, bad_bash, version)[1]:
+        raise RuntimeError('Stalled input was misreported as a display incompatibility')
     if autosuggestions.check(home, good_bash, version) != 2:
         raise RuntimeError('Faulty suggestion rendering was not rejected')
     if 'right margin' not in autosuggestions.status(home, good_bash, version)[1]:

@@ -272,6 +272,18 @@ while os.read(0, 1): pass
         with self.assertRaisesRegex(autosuggestions.ProbeFailure, 'right margin'):
             autosuggestions.probe(fake, self.home, inspect_dependencies=False)
 
+    def test_missing_key_echo_is_reported_as_input_timeout(self):
+        fake = Path(self.temporary.name) / 'no-key-echo'
+        fake.write_text(f'''#!{sys.executable}
+import os, tty
+tty.setraw(0)
+os.write(1, b'BASH_MODERN_PROBE> ')
+while os.read(0, 1): pass
+''')
+        fake.chmod(0o700)
+        with self.assertRaisesRegex(autosuggestions.ProbeFailure, 'interactive input timed out'):
+            autosuggestions.probe(fake, self.home, timeout_ms=500, inspect_dependencies=False)
+
     def test_terminal_teardown_before_output(self):
         fake = Path(self.temporary.name) / 'terminal-replay'
         fake.write_text(f'''#!{sys.executable}

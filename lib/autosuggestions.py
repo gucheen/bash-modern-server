@@ -238,6 +238,11 @@ def probe(bash, home, plugin=None, async_mode='0', timeout_ms=TIMEOUT_MS,
                     rendered = b''
                     for index, key in enumerate(prefix, 1):
                         type_keys(bytes([key]))
+                        # A stalled input hook produces no echo; that is not cursor corruption.
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0 or not select.select([master], [], [], remaining)[0]:
+                            raise ProbeFailure('interactive input timed out (no terminal response after typing)')
+                        rendered += receive()
                         settle = min(deadline, time.monotonic() + 0.15)
                         while time.monotonic() < settle:
                             if select.select([master], [], [], max(0, settle - time.monotonic()))[0]:
