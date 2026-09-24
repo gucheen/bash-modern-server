@@ -149,6 +149,8 @@ bash-modern autosuggestions on     # 检测通过后启用
 
 Ubuntu 26.04 的 Bash 5.3.9 环境中已复现加载插件后按键无回显；旧版检测可能将其误报为 `suggestion at terminal right margin moves the input cursor`，新版会报告输入超时。该现象与 [Readline 8.3 的事件钩子输入缺陷](https://ftp.gnu.org/gnu/readline/readline-8.3-patches/readline83-001)一致。对于内嵌 Readline 的 Bash，仅升级 `libreadline` 或重编译插件不能修复 Bash 内的输入逻辑；需要包含相应修复的 Bash，再运行安装器和 `bash-modern autosuggestions on` 复检。
 
+完整排查过程、此前的显示修复及自编译 Bash 的使用方式见[自动建议兼容性故障记录](docs/autosuggestions-compatibility.md)。
+
 若输入异常导致无法操作，另开干净会话关闭自动建议：
 
 ```bash
